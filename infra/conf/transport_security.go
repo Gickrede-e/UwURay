@@ -113,7 +113,6 @@ func (c *REALITYConfig) Build() (proto.Message, error) {
 					config.MinClientVer[i] = byte(u)
 				}
 			}
-			errors.LogWarning(context.Background(), `REALITY: Changing "minClientVer" will increase the likelihood of your server's IP being blocked by the GFW`)
 		}
 		if c.MaxClientVer != "" {
 			config.MaxClientVer = make([]byte, 3)
