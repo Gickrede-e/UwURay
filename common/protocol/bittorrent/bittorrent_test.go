@@ -23,6 +23,10 @@ func TestSniffUTP(t *testing.T) {
 	selectiveAck := []byte{0, 4, 0xff, 0x00, 0xff, 0x00}
 	wrongVersion := utpPacket(4, 0, 0)
 	wrongVersion[0] = 4<<4 | 2
+	nonzeroAck := utpPacket(4, 0, 0)
+	nonzeroAck[19] = 1
+	channelData := utpPacket(4, 0, 0)
+	channelData[2], channelData[3] = 0, 16
 
 	cases := []struct {
 		name    string
@@ -35,6 +39,9 @@ func TestSniffUTP(t *testing.T) {
 		{"extension bits with wrong length", append(utpPacket(4, 2, 0), 0, 4, 1, 2, 3, 4), errNotBittorrent},
 		{"syn with nonzero timestamp_difference", utpPacket(4, 0, 0x1234), errNotBittorrent},
 		{"syn with trailing payload", utpPacket(4, 0, 0, 'x'), errNotBittorrent},
+		{"syn followed by dht query", utpPacket(4, 0, 0, dhtQuery...), nil},
+		{"syn with nonzero ack_nr", nonzeroAck, errNotBittorrent},
+		{"turn channel data", channelData, errNotBittorrent},
 		// txid 0x4100, no EDNS0: the worst case colliding with the uTP header
 		{"dns query", []byte{
 			0x41, 0x00, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -59,6 +66,34 @@ func TestSniffUTP(t *testing.T) {
 			}
 			if err == nil && h == nil {
 				t.Fatal("expected a sniff header, got nil")
+			}
+		})
+	}
+}
+
+var dhtQuery = []byte("d1:ad2:id20:abcdefghij0123456789e1:q4:ping1:t2:aa1:y1:qe")
+
+func TestSniffDHT(t *testing.T) {
+	cases := []struct {
+		name    string
+		payload string
+		err     error
+	}{
+		{"query", string(dhtQuery), nil},
+		{"response", "d1:rd2:id20:mnopqrstuvwxyz123456e1:t2:aa1:y1:re", nil},
+		{"bep42 response", "d2:ip6:abcdef1:rd2:id20:mnopqrstuvwxyz123456e1:t2:aa1:y1:re", nil},
+		{"error", "d1:eli201e23:A Generic Error Ocurrede1:t2:aa1:y1:ee", nil},
+		{"bare prefix", "d1:ad", errNotBittorrent},
+		{"query without message type", "d1:ad2:id20:abcdefghij0123456789e1:q4:ping1:t2:aae", errNotBittorrent},
+		{"query without node id", "d1:ad6:target20:abcdefghij0123456789e1:y1:qe", errNotBittorrent},
+		{"response with wrong message type", "d1:rd2:id20:mnopqrstuvwxyz123456e1:t2:aa1:y1:qe", errNotBittorrent},
+		{"other bencode", "d4:spaml1:a1:bee", errNotBittorrent},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if _, err := sniffDHT([]byte(c.payload)); err != c.err {
+				t.Fatalf("expected error %v, got %v", c.err, err)
 			}
 		})
 	}
