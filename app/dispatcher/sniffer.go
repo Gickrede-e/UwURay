@@ -85,6 +85,9 @@ func (s *Sniffer) Sniff(c context.Context, payload []byte, network net.Network) 
 		}
 
 		if err == nil && result != nil {
+			if result.Protocol() == "bittorrent" {
+				bittorrent.RememberPeer(c)
+			}
 			return result, nil
 		}
 	}
@@ -92,6 +95,13 @@ func (s *Sniffer) Sniff(c context.Context, payload []byte, network net.Network) 
 	if len(pendingSniffer) > 0 {
 		s.sniffer = pendingSniffer
 		return nil, common.ErrNoClue
+	}
+
+	// Unknown content (e.g. encrypted BitTorrent) towards a recently seen peer
+	if network == net.Network_TCP {
+		if h, err := bittorrent.SniffPeerCache(c); err == nil {
+			return h, nil
+		}
 	}
 
 	return nil, errUnknownContent
