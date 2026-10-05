@@ -27,6 +27,8 @@ func TestSniffUTP(t *testing.T) {
 	nonzeroAck[19] = 1
 	channelData := utpPacket(4, 0, 0)
 	channelData[2], channelData[3] = 0, 16
+	paddedChannelData := utpPacket(4, 0, 0)
+	paddedChannelData[2], paddedChannelData[3] = 0, 13
 
 	cases := []struct {
 		name    string
@@ -42,6 +44,7 @@ func TestSniffUTP(t *testing.T) {
 		{"syn followed by dht query", utpPacket(4, 0, 0, dhtQuery...), nil},
 		{"syn with nonzero ack_nr", nonzeroAck, errNotBittorrent},
 		{"turn channel data", channelData, errNotBittorrent},
+		{"padded turn channel data", paddedChannelData, errNotBittorrent},
 		// txid 0x4100, no EDNS0: the worst case colliding with the uTP header
 		{"dns query", []byte{
 			0x41, 0x00, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,

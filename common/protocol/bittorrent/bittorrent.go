@@ -85,8 +85,9 @@ func sniffUTP(b []byte) (*SniffHeader, error) {
 		return nil, errNotBittorrent
 	}
 
-	// TURN ChannelData (channel 0x4100-0x41FF) carries its payload length right after the channel number
-	if int(binary.BigEndian.Uint16(b[2:4])) == len(b)-4 {
+	// TURN ChannelData (channel 0x4100-0x41FF) carries its payload length right after the channel number,
+	// optionally padded to a multiple of 4 (RFC 8656 section 12.5)
+	if padding := len(b) - 4 - int(binary.BigEndian.Uint16(b[2:4])); padding >= 0 && padding < 4 {
 		return nil, errNotBittorrent
 	}
 
