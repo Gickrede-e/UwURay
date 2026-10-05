@@ -31,6 +31,18 @@ type protocolSnifferWithMetadata struct {
 
 type Sniffer struct {
 	sniffer []protocolSnifferWithMetadata
+	// Fallback sniffers run only once all other sniffers have ruled the content out
+	fallback []protocolSnifferWithMetadata
+}
+
+// rememberPeer feeds the bittorrent peer cache with the destinations of flows sniffed as bittorrent
+func rememberPeer(c context.Context) func(*bittorrent.SniffHeader, error) (SniffResult, error) {
+	return func(h *bittorrent.SniffHeader, err error) (SniffResult, error) {
+		if err == nil {
+			bittorrent.RememberPeer(c)
+		}
+		return h, err
+	}
 }
 
 func NewSniffer(ctx context.Context) *Sniffer {
@@ -40,6 +52,7 @@ func NewSniffer(ctx context.Context) *Sniffer {
 			return h, nil
 		}
 		if bh, berr := bittorrent.SniffHTTP(c); berr == nil {
+			bittorrent.RememberPeer(c)
 			return bh, nil
 		}
 		return nil, err
@@ -48,11 +61,16 @@ func NewSniffer(ctx context.Context) *Sniffer {
 		sniffer: []protocolSnifferWithMetadata{
 			{func(c context.Context, b []byte) (SniffResult, error) { return sniffHTTPWithBT(c, b) }, false, net.Network_TCP},
 			{func(c context.Context, b []byte) (SniffResult, error) { return tls.SniffTLS(b) }, false, net.Network_TCP},
-			{func(c context.Context, b []byte) (SniffResult, error) { return bittorrent.SniffBitTorrent(b) }, false, net.Network_TCP},
+			{func(c context.Context, b []byte) (SniffResult, error) {
+				return rememberPeer(c)(bittorrent.SniffBitTorrent(b))
+			}, false, net.Network_TCP},
 
 			{func(c context.Context, b []byte) (SniffResult, error) { return sniffHTTPWithBT(c, b) }, false, net.Network_UDP},
 			{func(c context.Context, b []byte) (SniffResult, error) { return quic.SniffQUIC(b) }, false, net.Network_UDP},
-			{func(c context.Context, b []byte) (SniffResult, error) { return bittorrent.SniffUDP(b) }, false, net.Network_UDP},
+			{func(c context.Context, b []byte) (SniffResult, error) { return rememberPeer(c)(bittorrent.SniffUDP(b)) }, false, net.Network_UDP},
+		},
+		fallback: []protocolSnifferWithMetadata{
+			{func(c context.Context, b []byte) (SniffResult, error) { return bittorrent.SniffPeerCache(c) }, false, net.Network_TCP},
 		},
 	}
 	if sniffer, err := newFakeDNSSniffer(ctx); err == nil {
@@ -92,6 +110,15 @@ func (s *Sniffer) Sniff(c context.Context, payload []byte, network net.Network) 
 	if len(pendingSniffer) > 0 {
 		s.sniffer = pendingSniffer
 		return nil, common.ErrNoClue
+	}
+
+	for _, si := range s.fallback {
+		if si.network != network {
+			continue
+		}
+		if result, err := si.protocolSniffer(c, payload); err == nil && result != nil {
+			return result, nil
+		}
 	}
 
 	return nil, errUnknownContent

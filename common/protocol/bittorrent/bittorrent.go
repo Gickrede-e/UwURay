@@ -80,6 +80,17 @@ func sniffUTP(b []byte) (*SniffHeader, error) {
 		return nil, errNotBittorrent
 	}
 
+	// ack_nr is always 0 in ST_SYN; otherwise a 20-byte DNS query with id 0x4100 matches
+	if binary.BigEndian.Uint16(b[18:20]) != 0 {
+		return nil, errNotBittorrent
+	}
+
+	// TURN ChannelData (channel 0x4100-0x41FF) carries its payload length right after the channel number,
+	// optionally padded to a multiple of 4 (RFC 8656 section 12.5)
+	if padding := len(b) - 4 - int(binary.BigEndian.Uint16(b[2:4])); padding >= 0 && padding < 4 {
+		return nil, errNotBittorrent
+	}
+
 	// Walk the extension chain. Selective ack (1) and extension bits (2)
 	extension, offset := b[1], 20
 	for extension != 0 {
@@ -106,9 +117,13 @@ func sniffUTP(b []byte) (*SniffHeader, error) {
 		offset += 2 + length
 	}
 
-	// extensions should consume all ST_SYN payload
+	// extensions should consume all ST_SYN payload,
+	// unless a DHT or UDP tracker packet follows in the same read
 	if len(b) != offset {
-		return nil, errNotBittorrent
+		if _, err := sniffUDPTracker(b[offset:]); err == nil {
+			return &SniffHeader{}, nil
+		}
+		return sniffDHT(b[offset:])
 	}
 
 	return &SniffHeader{}, nil
@@ -132,22 +147,29 @@ func sniffUDPTracker(b []byte) (*SniffHeader, error) {
 	return &SniffHeader{}, nil
 }
 
-var dhtPrefixes = [][]byte{
-	[]byte("d1:ad"), // query
-	[]byte("d1:rd"), // response
-	[]byte("d2:ip"), // BEP-42
-	[]byte("d1:el"), // error
+// KRPC message: bencoded dict prefix, node id (absent in errors) and message type
+var dhtMessages = []struct {
+	prefix, id, y []byte
+}{
+	{[]byte("d1:ad"), []byte("2:id20:"), []byte("1:y1:q")}, // query
+	{[]byte("d1:rd"), []byte("2:id20:"), []byte("1:y1:r")}, // response
+	{[]byte("d2:ip"), []byte("2:id20:"), []byte("1:y1:r")}, // BEP-42 response
+	{[]byte("d1:el"), nil, []byte("1:y1:e")},               // error
 }
 
 func sniffDHT(b []byte) (*SniffHeader, error) {
-	if len(b) < 5 {
-		return nil, errNotBittorrent
-	}
-
-	for _, p := range dhtPrefixes {
-		if bytes.HasPrefix(b, p) {
-			return &SniffHeader{}, nil
+	for _, m := range dhtMessages {
+		if !bytes.HasPrefix(b, m.prefix) {
+			continue
 		}
+		// query and response carry at least a 20-byte node id and a transaction id
+		if m.id != nil && (len(b) < 40 || !bytes.Contains(b, m.id)) {
+			return nil, errNotBittorrent
+		}
+		if !bytes.Contains(b, m.y) {
+			return nil, errNotBittorrent
+		}
+		return &SniffHeader{}, nil
 	}
 
 	return nil, errNotBittorrent
