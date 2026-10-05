@@ -12,10 +12,10 @@ import (
 // Peer cache remembers ip:port of flows a user sniffed as bittorrent, so the same user falling back
 // from uTP/DHT to encrypted TCP towards that peer is still recognized.
 const (
-	peerCacheTTL         = 10 * time.Minute
-	peerCacheMax         = 65536
-	peerCacheFullSweep   = time.Minute // how often a full cache may be swept for expired entries
-	peerCacheUserBudget  = 2000        // new entries per user per peerCacheTTL, bounds memory per user
+	peerCacheTTL        = 10 * time.Minute
+	peerCacheMax        = 65536
+	peerCacheFullSweep  = time.Minute // how often a full cache may be swept for expired entries
+	peerCacheUserBudget = 2000        // new entries per user per peerCacheTTL, bounds memory per user
 )
 
 // Not peers: shared address space (CGNAT), benchmarking (default fake DNS pool), IETF protocol assignments, reserved
