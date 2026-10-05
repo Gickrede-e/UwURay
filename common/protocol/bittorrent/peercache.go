@@ -2,6 +2,7 @@ package bittorrent
 
 import (
 	"context"
+	"math"
 	"net/netip"
 	"sync"
 	"time"
@@ -11,11 +12,13 @@ import (
 
 // Peer cache remembers ip:port of flows a user sniffed as bittorrent, so the same user falling back
 // from uTP/DHT to encrypted TCP towards that peer is still recognized.
+// It also marks the user: their encrypted (MSE/PE shaped) TCP to new peers is then recognized too.
 const (
 	peerCacheTTL        = 10 * time.Minute
 	peerCacheMax        = 65536
 	peerCacheFullSweep  = time.Minute // how often a full cache may be swept for expired entries
 	peerCacheUserBudget = 2000        // new entries per user per peerCacheTTL, bounds memory per user
+	userMarkTTL         = time.Hour   // how long a user caught with bittorrent stays marked
 )
 
 // Not peers: shared address space (CGNAT), benchmarking (default fake DNS pool), IETF protocol assignments, reserved
@@ -26,10 +29,12 @@ var nonPeerPrefixes = []netip.Prefix{
 	netip.MustParsePrefix("240.0.0.0/4"),
 }
 
-type PeerCacheHeader struct{}
+type PeerCacheHeader struct {
+	protocol string
+}
 
 func (h *PeerCacheHeader) Protocol() string {
-	return "bittorrent-cache"
+	return h.protocol
 }
 
 func (h *PeerCacheHeader) Domain() string {
@@ -52,6 +57,7 @@ type peerCache struct {
 	sync.RWMutex
 	peers     map[peerKey]time.Time // expiry, extended only by fresh evidence
 	budgets   map[string]*userBudget
+	users     map[string]time.Time // mark expiry of users caught with bittorrent
 	lastSweep time.Time
 }
 
@@ -59,6 +65,7 @@ func newPeerCache() *peerCache {
 	return &peerCache{
 		peers:   make(map[peerKey]time.Time),
 		budgets: make(map[string]*userBudget),
+		users:   make(map[string]time.Time),
 	}
 }
 
@@ -76,6 +83,26 @@ func (c *peerCache) sweep(now time.Time) {
 			delete(c.budgets, u)
 		}
 	}
+	for u, exp := range c.users {
+		if now.After(exp) {
+			delete(c.users, u)
+		}
+	}
+}
+
+func (c *peerCache) mark(user string, now time.Time) {
+	c.Lock()
+	defer c.Unlock()
+
+	c.users[user] = now.Add(userMarkTTL)
+}
+
+func (c *peerCache) marked(user string, now time.Time) bool {
+	c.RLock()
+	defer c.RUnlock()
+
+	exp, found := c.users[user]
+	return found && !now.After(exp)
 }
 
 func (c *peerCache) add(k peerKey, now time.Time) {
@@ -145,7 +172,20 @@ func cacheableAddr(addr netip.Addr) bool {
 	return true
 }
 
-// peerFromContext returns the flow's user (email, or client IP for anonymous inbounds) and destination peer
+// userFromContext returns the flow's user: email, or client IP for anonymous inbounds
+func userFromContext(ctx context.Context) string {
+	if inbound := session.InboundFromContext(ctx); inbound != nil {
+		if inbound.User != nil && inbound.User.Email != "" {
+			return inbound.User.Email
+		}
+		if inbound.Source.IsValid() {
+			return inbound.Source.Address.String()
+		}
+	}
+	return ""
+}
+
+// peerFromContext returns the flow's user and destination peer, if the destination can be a peer
 func peerFromContext(ctx context.Context) (peerKey, bool) {
 	outbounds := session.OutboundsFromContext(ctx)
 	if len(outbounds) == 0 {
@@ -159,28 +199,55 @@ func peerFromContext(ctx context.Context) (peerKey, bool) {
 	if !ok || !cacheableAddr(addr) {
 		return peerKey{}, false
 	}
-	user := ""
-	if inbound := session.InboundFromContext(ctx); inbound != nil {
-		if inbound.User != nil && inbound.User.Email != "" {
-			user = inbound.User.Email
-		} else if inbound.Source.IsValid() {
-			user = inbound.Source.Address.String()
+	return peerKey{user: userFromContext(ctx), peer: netip.AddrPortFrom(addr, uint16(dest.Port))}, true
+}
+
+// RememberPeer marks the user of a flow sniffed as bittorrent and caches its destination
+func RememberPeer(ctx context.Context) {
+	now := time.Now()
+	peers.mark(userFromContext(ctx), now)
+	if k, ok := peerFromContext(ctx); ok {
+		peers.add(k, now)
+	}
+}
+
+// mseShaped reports whether b looks like the first flight of an MSE/PE encrypted connection:
+// a 96-byte DH public key plus 0-512 bytes of random padding, all indistinguishable from random
+func mseShaped(b []byte) bool {
+	if len(b) < 96 || len(b) > 608 {
+		return false
+	}
+	var seen [256]bool
+	distinct, zeros := 0, 0
+	for _, c := range b {
+		if !seen[c] {
+			seen[c] = true
+			distinct++
+		}
+		if c != 0 {
+			zeros = 0
+		} else if zeros++; zeros > 7 {
+			return false
 		}
 	}
-	return peerKey{user: user, peer: netip.AddrPortFrom(addr, uint16(dest.Port))}, true
+	// random bytes cover about 256*(1-(255/256)^n) distinct values
+	return float64(distinct) >= 0.8*256*(1-math.Pow(255.0/256, float64(len(b))))
 }
 
-// RememberPeer caches the destination of a flow sniffed as bittorrent
-func RememberPeer(ctx context.Context) {
-	if k, ok := peerFromContext(ctx); ok {
-		peers.add(k, time.Now())
+// SniffPeerCache recognizes a TCP flow of unknown content as bittorrent when it goes to a peer
+// its user recently talked bittorrent to, or when the user is marked and the flow is MSE/PE shaped.
+// MSE shape alone is no evidence (Shadowsocks, obfs4 and the like look the same), so it never marks anyone.
+func SniffPeerCache(ctx context.Context, b []byte) (*PeerCacheHeader, error) {
+	k, ok := peerFromContext(ctx)
+	if !ok {
+		return nil, errNotBittorrent
 	}
-}
-
-// SniffPeerCache recognizes a flow of unknown content towards a peer its user recently talked bittorrent to
-func SniffPeerCache(ctx context.Context) (*PeerCacheHeader, error) {
-	if k, ok := peerFromContext(ctx); ok && peers.has(k, time.Now()) {
-		return &PeerCacheHeader{}, nil
+	now := time.Now()
+	if peers.has(k, now) {
+		return &PeerCacheHeader{protocol: "bittorrent-cache"}, nil
+	}
+	if peers.marked(k.user, now) && mseShaped(b) {
+		return &PeerCacheHeader{protocol: "bittorrent-mse"}, nil
 	}
 	return nil, errNotBittorrent
 }

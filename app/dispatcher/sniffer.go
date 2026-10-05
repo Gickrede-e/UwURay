@@ -70,7 +70,7 @@ func NewSniffer(ctx context.Context) *Sniffer {
 			{func(c context.Context, b []byte) (SniffResult, error) { return rememberPeer(c)(bittorrent.SniffUDP(b)) }, false, net.Network_UDP},
 		},
 		fallback: []protocolSnifferWithMetadata{
-			{func(c context.Context, b []byte) (SniffResult, error) { return bittorrent.SniffPeerCache(c) }, false, net.Network_TCP},
+			{func(c context.Context, b []byte) (SniffResult, error) { return bittorrent.SniffPeerCache(c, b) }, false, net.Network_TCP},
 		},
 	}
 	if sniffer, err := newFakeDNSSniffer(ctx); err == nil {

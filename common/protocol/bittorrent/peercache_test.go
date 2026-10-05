@@ -1,7 +1,9 @@
 package bittorrent
 
 import (
+	"bytes"
 	"context"
+	"crypto/rand"
 	"net/netip"
 	"testing"
 	"time"
@@ -98,5 +100,66 @@ func TestPeerFromContext(t *testing.T) {
 				t.Fatalf("expected user %q, got %q", c.user, k.user)
 			}
 		})
+	}
+}
+
+func TestMSEShaped(t *testing.T) {
+	random := make([]byte, 608)
+	rand.Read(random)
+	ascii := bytes.Repeat([]byte("GET /announce?info_hash=abc HTTP/1.1\r\n"), 10)
+	zeroRun := append([]byte{}, random[:200]...)
+	copy(zeroRun[100:], make([]byte, 8))
+
+	cases := []struct {
+		name    string
+		payload []byte
+		mse     bool
+	}{
+		{"shortest handshake", random[:96], true},
+		{"handshake with padding", random[:300], true},
+		{"longest handshake", random, true},
+		{"too short", random[:95], false},
+		{"too long", append(random, random[:1]...), false},
+		{"text", ascii[:300], false},
+		{"zero run", zeroRun, false},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := mseShaped(c.payload); got != c.mse {
+				t.Fatalf("expected %v, got %v", c.mse, got)
+			}
+		})
+	}
+}
+
+func TestSniffPeerCacheMSE(t *testing.T) {
+	peers = newPeerCache()
+	random := make([]byte, 200)
+	rand.Read(random)
+	flow := func(email string, dest net.Destination) context.Context {
+		ctx := session.ContextWithInbound(context.Background(), &session.Inbound{User: &protocol.MemoryUser{Email: email}})
+		return session.ContextWithOutbounds(ctx, []*session.Outbound{{Target: dest}})
+	}
+	peer := net.TCPDestination(net.ParseAddress("203.0.113.88"), 40000)
+
+	if _, err := SniffPeerCache(flow("mse-marked", peer), random); err == nil {
+		t.Fatal("expected an unmarked user's encrypted flow to pass")
+	}
+
+	// a tracker contacted by domain on a well-known port still marks the user
+	RememberPeer(flow("mse-marked", net.TCPDestination(net.ParseAddress("tracker.example"), 80)))
+
+	if h, err := SniffPeerCache(flow("mse-marked", peer), random); err != nil || h.Protocol() != "bittorrent-mse" {
+		t.Fatalf("expected bittorrent-mse, got %v, %v", h, err)
+	}
+	if _, err := SniffPeerCache(flow("mse-marked", peer), random[:50]); err == nil {
+		t.Fatal("expected a non-MSE-shaped flow of a marked user to pass")
+	}
+	if _, err := SniffPeerCache(flow("mse-marked", net.TCPDestination(net.ParseAddress("203.0.113.88"), 443)), random); err == nil {
+		t.Fatal("expected a marked user's encrypted flow to a well-known port to pass")
+	}
+	if _, err := SniffPeerCache(flow("mse-other", peer), random); err == nil {
+		t.Fatal("expected another user's encrypted flow to pass")
 	}
 }
