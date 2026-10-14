@@ -101,3 +101,12 @@ func TestSniffDHT(t *testing.T) {
 		})
 	}
 }
+
+func TestSniffUTPStrength(t *testing.T) {
+	if h, err := sniffUTP(utpPacket(4, 0, 0)); err != nil || !h.weak {
+		t.Fatalf("expected a lone SYN to be weak evidence, got %v, %v", h, err)
+	}
+	if h, err := sniffUTP(utpPacket(4, 0, 0, dhtQuery...)); err != nil || h.weak {
+		t.Fatalf("expected a SYN followed by DHT to be strong evidence, got %v, %v", h, err)
+	}
+}

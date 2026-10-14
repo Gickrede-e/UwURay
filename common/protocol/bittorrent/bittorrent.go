@@ -13,6 +13,8 @@ import (
 
 type SniffHeader struct {
 	host string
+	// weak evidence (a lone uTP SYN, an HTTP request matched by User-Agent or LSD) is not enough to mark a user
+	weak bool
 }
 
 func (h *SniffHeader) Protocol() string {
@@ -126,7 +128,7 @@ func sniffUTP(b []byte) (*SniffHeader, error) {
 		return sniffDHT(b[offset:])
 	}
 
-	return &SniffHeader{}, nil
+	return &SniffHeader{weak: true}, nil
 }
 
 func sniffUDPTracker(b []byte) (*SniffHeader, error) {
@@ -184,10 +186,13 @@ func SniffHTTP(c context.Context) (*SniffHeader, error) {
 
 	h, found := content.Attributes[":bittorrent"]
 	if found {
+		// only a tracker announce (info_hash with peer_id) is strong; scrape, HTTP seeds, LSD and User-Agent matches are weak
+		path := strings.ToLower(content.Attributes[":path"])
+		weak := !strings.Contains(path, "info_hash=") || !strings.Contains(path, "peer_id=")
 		if h == "no_host" {
-			return &SniffHeader{}, nil
+			return &SniffHeader{weak: weak}, nil
 		}
-		return &SniffHeader{host: h}, nil
+		return &SniffHeader{host: h, weak: weak}, nil
 	}
 
 	return nil, errNotBittorrent
