@@ -38,8 +38,9 @@ var nonPeerPrefixes = []netip.Prefix{
 	netip.MustParsePrefix("240.0.0.0/4"),
 }
 
-// bridgeUser carries other people's traffic between nodes, so marking it would hit everyone behind the bridge
-const bridgeUser = "bridge_user"
+// bridgeUser is the bridge account (Remnawave puts the user ID in the email). It carries other people's traffic
+// between nodes, so marking it would hit everyone behind the bridge
+const bridgeUser = "34"
 
 // EncryptedHeader is the result of SniffEncrypted. Its zero value is a peer cache hit.
 type EncryptedHeader struct {

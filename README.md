@@ -19,7 +19,7 @@ Besides plain signatures, sniffing reports encrypted BitTorrent, matched by a `"
 
 Users are told apart by email (client IP for inbounds without one). Accounts carrying other people's traffic are never marked:
 
-- the bridge account, email `bridge_user`;
+- the bridge account `bridge_user`, which Xray sees as email `34` (its Remnawave user ID);
 - keys online from more than 8 IPs count as shared and are exempt from `bittorrent-mse`; this needs `"statsUserOnline": true` in the policy.
 
 ## Usage with [Remnanode](https://github.com/remnawave/node)
