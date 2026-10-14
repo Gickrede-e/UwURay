@@ -17,9 +17,9 @@ Besides plain signatures, sniffing reports encrypted BitTorrent, matched by a `"
 - `bittorrent-cache`: TCP of unknown content to a peer the same user talked BitTorrent to in the last 10 minutes.
 - `bittorrent-mse`: MSE/PE shaped TCP to a bare IP on a non-well-known port, from a user caught with strong BitTorrent evidence in the last hour. While marked, that user's other encrypted TCP to such destinations (Shadowsocks, obfs4, MTProto proxies) is matched too.
 
-Users are told apart by email (client IP for inbounds without one). Accounts carrying other people's traffic must not be marked:
+Users are told apart by email (client IP for inbounds without one). Accounts carrying other people's traffic are never marked:
 
-- set `XRAY_BT_MARK_SKIP` to a regexp of such emails (bridges, chains, service keys), e.g. `XRAY_BT_MARK_SKIP=^(bridge|chain)-`;
+- the bridge account, email `bridge_user`;
 - keys online from more than 8 IPs count as shared and are exempt from `bittorrent-mse`; this needs `"statsUserOnline": true` in the policy.
 
 ## Usage with [Remnanode](https://github.com/remnawave/node)

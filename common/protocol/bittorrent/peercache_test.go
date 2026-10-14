@@ -125,15 +125,13 @@ func TestEvidence(t *testing.T) {
 	}
 }
 
-func TestParseMarkSkip(t *testing.T) {
-	if parseMarkSkip("") != nil {
-		t.Fatal("expected no skip list by default")
-	}
-	if re := parseMarkSkip("^bridge-"); !re.MatchString("bridge-de") || re.MatchString("19") {
-		t.Fatal("expected the skip list to match only bridge accounts")
-	}
-	if re := parseMarkSkip("("); !re.MatchString("19") {
-		t.Fatal("expected an invalid skip list to skip everyone")
+func TestBridgeUserNeverMarked(t *testing.T) {
+	withPeers(t)
+	handshake := randomBytes(200)
+
+	RememberPeer(flow(bridgeUser, net.UDPDestination(net.ParseAddress("203.0.113.91"), 6881)), &SniffHeader{})
+	if _, err := SniffEncrypted(flow(bridgeUser, net.TCPDestination(net.ParseAddress("203.0.113.92"), 40000)), handshake); err == nil {
+		t.Fatal("expected the bridge user's encrypted flow to a new peer to pass")
 	}
 }
 

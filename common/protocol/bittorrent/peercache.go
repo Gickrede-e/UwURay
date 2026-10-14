@@ -4,14 +4,11 @@ import (
 	"context"
 	"math"
 	"net/netip"
-	"regexp"
 	"sync"
 	"time"
 
 	"github.com/xtls/xray-core/common"
-	"github.com/xtls/xray-core/common/errors"
 	"github.com/xtls/xray-core/common/net"
-	"github.com/xtls/xray-core/common/platform"
 	"github.com/xtls/xray-core/common/session"
 	"github.com/xtls/xray-core/core"
 	"github.com/xtls/xray-core/features/stats"
@@ -41,23 +38,8 @@ var nonPeerPrefixes = []netip.Prefix{
 	netip.MustParsePrefix("240.0.0.0/4"),
 }
 
-// markSkip matches users never marked: accounts carrying other people's traffic (bridges, chains, service keys).
-// Set with XRAY_BT_MARK_SKIP, a regexp over emails (or client IPs of anonymous inbounds).
-var markSkip = sync.OnceValue(func() *regexp.Regexp {
-	return parseMarkSkip(platform.NewEnvFlag("xray.bt.mark.skip").GetValue(func() string { return "" }))
-})
-
-func parseMarkSkip(s string) *regexp.Regexp {
-	if s == "" {
-		return nil
-	}
-	re, err := regexp.Compile(s)
-	if err != nil {
-		errors.LogError(context.Background(), "invalid XRAY_BT_MARK_SKIP, no user will be marked: ", err)
-		return regexp.MustCompile("") // fail safe: matches everyone
-	}
-	return re
-}
+// bridgeUser carries other people's traffic between nodes, so marking it would hit everyone behind the bridge
+const bridgeUser = "bridge_user"
 
 // EncryptedHeader is the result of SniffEncrypted. Its zero value is a peer cache hit.
 type EncryptedHeader struct {
@@ -283,7 +265,7 @@ func sharedKey(ctx context.Context, user string) bool {
 // RememberPeer records a flow sniffed as bittorrent: caches its destination and counts it as evidence against its user
 func RememberPeer(ctx context.Context, h *SniffHeader) {
 	now := time.Now()
-	if user := userFromContext(ctx); user != "" && (markSkip() == nil || !markSkip().MatchString(user)) {
+	if user := userFromContext(ctx); user != "" && user != bridgeUser {
 		peers.evidence(user, targetFromContext(ctx).String(), h.weak, now)
 	}
 	if k, ok := peerFromContext(ctx); ok {
