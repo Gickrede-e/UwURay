@@ -32,6 +32,8 @@ func (c *Config) GetREALITYConfig() *reality.Config {
 		SessionTicketsDisabled: true,
 
 		KeyLogWriter: KeyLogWriterFromConfig(c),
+
+		RequireMlkem768: c.RequireMlkem768,
 	}
 	var err error
 	if config.PrivateKey, err = ecdh.X25519().NewPrivateKey(c.PrivateKey); err != nil {

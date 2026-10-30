@@ -39,6 +39,8 @@ type REALITYConfig struct {
 	ShortIds     []string        `json:"shortIds"`
 	Mldsa65Seed  string          `json:"mldsa65Seed"`
 
+	RequireMlkem768 bool `json:"requireMlkem768"`
+
 	LimitFallbackUpload   LimitFallback `json:"limitFallbackUpload"`
 	LimitFallbackDownload LimitFallback `json:"limitFallbackDownload"`
 
@@ -55,6 +57,7 @@ func (c *REALITYConfig) Build() (proto.Message, error) {
 	config := new(reality.Config)
 	config.MasterKeyLog = c.MasterKeyLog
 	config.Show = c.Show
+	config.RequireMlkem768 = c.RequireMlkem768
 	var err error
 	if c.Target != nil {
 		c.Dest = c.Target

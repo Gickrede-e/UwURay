@@ -7,7 +7,8 @@ UwuRay is a fork of [Xray-core](https://github.com/XTLS/Xray-core) with a few cu
 - Extended BitTorrent sniffer
 - Improved HTTP sniffing
 - Switched .dat files from `XTLS/Xray-rules-dat` to `MetaCubeX/meta-rules-dat`
-- REALITY min client version check removed
+- ~REALITY min client version check removed~
+- Added `requireMlkem768` option for REALITY (default **false**)
 - Added a workflow to build Linux binaries for releases
 
 ## Usage with [Remnanode](https://github.com/remnawave/node)
