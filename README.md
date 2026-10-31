@@ -1,6 +1,6 @@
 ## About
 
-UwuRay is a fork of [Xray-core](https://github.com/XTLS/Xray-core) with a few custom changes not merged upstream.
+UwURay is a fork of [Xray-core](https://github.com/XTLS/Xray-core) with a few custom changes not merged upstream.
 
 ## Fork features
 
@@ -17,11 +17,11 @@ Set `CUSTOM_CORE_URL` in Remnanode:
 
 - **x86-64:**
 ```env
-CUSTOM_CORE_URL=https://github.com/MakostaDev/UwuRay/releases/latest/download/Xray-linux-64
+CUSTOM_CORE_URL=https://github.com/MakostaDev/UwURay/releases/latest/download/Xray-linux-64
 ```
 - **ARM64 (aarch64):**
 ```env
-CUSTOM_CORE_URL=https://github.com/MakostaDev/UwuRay/releases/latest/download/Xray-linux-arm64-v8a
+CUSTOM_CORE_URL=https://github.com/MakostaDev/UwURay/releases/latest/download/Xray-linux-arm64-v8a
 ```
 
 Then restart the container:
@@ -43,4 +43,4 @@ docker compose down remnanode && docker compose up -d remnanode && docker compos
 
 ## License
 
-[Mozilla Public License Version 2.0](https://github.com/MakostaDev/UwuRay/blob/main/LICENSE)
+[Mozilla Public License Version 2.0](https://github.com/MakostaDev/UwURay/blob/main/LICENSE)
