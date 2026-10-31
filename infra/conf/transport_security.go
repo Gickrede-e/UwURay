@@ -57,7 +57,6 @@ func (c *REALITYConfig) Build() (proto.Message, error) {
 	config := new(reality.Config)
 	config.MasterKeyLog = c.MasterKeyLog
 	config.Show = c.Show
-	config.RequireMlkem768 = c.RequireMlkem768
 	var err error
 	if c.Target != nil {
 		c.Dest = c.Target
@@ -175,6 +174,11 @@ func (c *REALITYConfig) Build() (proto.Message, error) {
 		config.LimitFallbackDownload.AfterBytes = c.LimitFallbackDownload.AfterBytes
 		config.LimitFallbackDownload.BytesPerSec = c.LimitFallbackDownload.BytesPerSec
 		config.LimitFallbackDownload.BurstBytesPerSec = c.LimitFallbackDownload.BurstBytesPerSec
+
+		config.RequireMlkem768 = c.RequireMlkem768
+		if c.Show && !c.RequireMlkem768 {
+			errors.LogWarning(context.Background(), `REALITY: "requireMlkem768" is false, accepting Client Hello without X25519MLKEM768 (unlike modern browsers) will increase the likelihood of your server's IP being blocked by the GFW`)
+		}
 	} else {
 		config.Fingerprint = strings.ToLower(c.Fingerprint)
 		if config.Fingerprint == "unsafe" || config.Fingerprint == "hellogolang" {
