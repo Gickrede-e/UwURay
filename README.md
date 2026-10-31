@@ -10,6 +10,7 @@ UwURay is a fork of [Xray-core](https://github.com/XTLS/Xray-core) with a few cu
 - ~REALITY min client version check removed~
 - Added `requireMlkem768` option for REALITY (default **false**)
 - Added a workflow to build Linux binaries for releases
+- Allowed VLESS/Trojan outbounds without encryption
 
 ## Usage with [Remnanode](https://github.com/remnawave/node)
 
