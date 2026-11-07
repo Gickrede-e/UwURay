@@ -145,10 +145,14 @@ func TestPeerFromContext(t *testing.T) {
 	}{
 		{"peer", nil, net.TCPDestination(net.ParseAddress("203.0.113.5"), 51413), "", true},
 		{"ipv6 peer", nil, net.TCPDestination(net.ParseAddress("2a00:1450::1"), 51413), "", true},
-		{"user", &session.Inbound{User: &protocol.MemoryUser{Email: "u@x"}, Source: net.TCPDestination(net.ParseAddress("192.0.2.9"), 1)},
-			net.TCPDestination(net.ParseAddress("203.0.113.5"), 51413), "u@x", true},
-		{"anonymous user", &session.Inbound{Source: net.TCPDestination(net.ParseAddress("192.0.2.9"), 1)},
-			net.TCPDestination(net.ParseAddress("203.0.113.5"), 51413), "192.0.2.9", true},
+		{
+			"user", &session.Inbound{User: &protocol.MemoryUser{Email: "u@x"}, Source: net.TCPDestination(net.ParseAddress("192.0.2.9"), 1)},
+			net.TCPDestination(net.ParseAddress("203.0.113.5"), 51413), "u@x", true,
+		},
+		{
+			"anonymous user", &session.Inbound{Source: net.TCPDestination(net.ParseAddress("192.0.2.9"), 1)},
+			net.TCPDestination(net.ParseAddress("203.0.113.5"), 51413), "192.0.2.9", true,
+		},
 		{"well-known port", nil, net.TCPDestination(net.ParseAddress("203.0.113.5"), 443), "", false},
 		{"stun port", nil, net.UDPDestination(net.ParseAddress("203.0.113.5"), 3478), "", false},
 		{"private address", nil, net.TCPDestination(net.ParseAddress("192.168.1.2"), 51413), "", false},

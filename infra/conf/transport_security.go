@@ -39,6 +39,8 @@ type REALITYConfig struct {
 	ShortIds     []string        `json:"shortIds"`
 	Mldsa65Seed  string          `json:"mldsa65Seed"`
 
+	RequireMlkem768 bool `json:"requireMlkem768"`
+
 	LimitFallbackUpload   LimitFallback `json:"limitFallbackUpload"`
 	LimitFallbackDownload LimitFallback `json:"limitFallbackDownload"`
 
@@ -172,6 +174,11 @@ func (c *REALITYConfig) Build() (proto.Message, error) {
 		config.LimitFallbackDownload.AfterBytes = c.LimitFallbackDownload.AfterBytes
 		config.LimitFallbackDownload.BytesPerSec = c.LimitFallbackDownload.BytesPerSec
 		config.LimitFallbackDownload.BurstBytesPerSec = c.LimitFallbackDownload.BurstBytesPerSec
+
+		config.RequireMlkem768 = c.RequireMlkem768
+		if c.Show && !c.RequireMlkem768 {
+			errors.LogWarning(context.Background(), `REALITY: "requireMlkem768" is false, accepting Client Hello without X25519MLKEM768 (unlike modern browsers) will increase the likelihood of your server's IP being blocked by the GFW`)
+		}
 	} else {
 		config.Fingerprint = strings.ToLower(c.Fingerprint)
 		if config.Fingerprint == "unsafe" || config.Fingerprint == "hellogolang" {
@@ -312,6 +319,7 @@ type TLSConfig struct {
 	ECHServerKeys           string           `json:"echServerKeys"`
 	ECHConfigList           string           `json:"echConfigList"`
 	ECHSocketSettings       *SocketConfig    `json:"echSockopt"`
+	UseSystemCA             bool             `json:"useSystemCA"`
 }
 
 // Build implements Buildable.
@@ -399,6 +407,7 @@ func (c *TLSConfig) Build() (proto.Message, error) {
 		}
 		config.EchSocketSettings = ss
 	}
+	config.UseSystemCa = c.UseSystemCA
 
 	return config, nil
 }

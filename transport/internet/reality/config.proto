@@ -22,6 +22,8 @@ message Config {
   LimitFallback limit_fallback_upload = 12;
   LimitFallback limit_fallback_download = 13;
 
+  bool require_mlkem768 = 14;
+
   string Fingerprint = 21;
   string server_name = 22;
   bytes public_key = 23;

@@ -1,15 +1,17 @@
 ## About
 
-UwuRay is a fork of [Xray-core](https://github.com/XTLS/Xray-core) with a few custom changes not merged upstream.
+UwURay is a fork of [Xray-core](https://github.com/XTLS/Xray-core) with a few custom changes not merged upstream.
 
 ## Fork features
 
 - Extended BitTorrent sniffer
 - Improved HTTP sniffing
 - Stable outbound selection by account email with the `userHash` balancer strategy
-- Switched .dat files from `Loyalsoldier/v2ray-rules-dat` to `MetaCubeX/meta-rules-dat`
-- REALITY min client version check removed
+- Switched .dat files from `XTLS/Xray-rules-dat` to `MetaCubeX/meta-rules-dat`
+- ~REALITY min client version check removed~
+- Added `requireMlkem768` option for REALITY (default **false**)
 - Added a workflow to build Linux binaries for releases
+- Allowed VLESS/Trojan outbounds without encryption
 
 ### Encrypted BitTorrent
 
@@ -48,17 +50,19 @@ Merge this routing fragment into your configuration, placing its TCP/UDP rule af
 
 Each selected outbound must already have a stable public egress IP. There is no health-based failover: an unavailable chosen exit stays selected. Missing email or an empty pool uses the configured `fallbackTag`, or the default outbound when none is configured. Explicit balancer overrides take precedence.
 
+Lua routing scripts can select the same mapping with `router.PickOutbound("client-exits", user)`, using the `user` argument supplied to `HandleRoute`.
+
 ## Usage with [Remnanode](https://github.com/remnawave/node)
 
 Set `CUSTOM_CORE_URL` in Remnanode:
 
 - **x86-64:**
 ```env
-CUSTOM_CORE_URL=https://github.com/MakostaDev/UwuRay/releases/latest/download/Xray-linux-64
+CUSTOM_CORE_URL=https://github.com/MakostaDev/UwURay/releases/latest/download/Xray-linux-64
 ```
 - **ARM64 (aarch64):**
 ```env
-CUSTOM_CORE_URL=https://github.com/MakostaDev/UwuRay/releases/latest/download/Xray-linux-arm64-v8a
+CUSTOM_CORE_URL=https://github.com/MakostaDev/UwURay/releases/latest/download/Xray-linux-arm64-v8a
 ```
 
 Then restart the container:
@@ -80,4 +84,4 @@ docker compose down remnanode && docker compose up -d remnanode && docker compos
 
 ## License
 
-[Mozilla Public License Version 2.0](https://github.com/MakostaDev/UwuRay/blob/main/LICENSE)
+[Mozilla Public License Version 2.0](https://github.com/MakostaDev/UwURay/blob/main/LICENSE)
