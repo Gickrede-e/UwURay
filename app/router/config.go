@@ -18,9 +18,9 @@ type Rule struct {
 	Webhook   *WebhookNotifier
 }
 
-func (r *Rule) GetTag() (string, error) {
+func (r *Rule) GetTag(user string) (string, error) {
 	if r.Balancer != nil {
-		return r.Balancer.PickOutbound()
+		return r.Balancer.PickOutbound(user)
 	}
 	return r.Tag, nil
 }
@@ -124,6 +124,13 @@ func (rr *RoutingRule) BuildCondition() (Condition, error) {
 // Build builds the balancing rule
 func (br *BalancingRule) Build(ohm outbound.Manager, dispatcher routing.Dispatcher) (*Balancer, error) {
 	switch strings.ToLower(br.Strategy) {
+	case "userhash":
+		return &Balancer{
+			selectors:   br.OutboundSelector,
+			strategy:    &UserHashStrategy{},
+			fallbackTag: br.FallbackTag,
+			ohm:         ohm,
+		}, nil
 	case "leastping":
 		return &Balancer{
 			selectors:   br.OutboundSelector,

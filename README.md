@@ -6,6 +6,7 @@ UwuRay is a fork of [Xray-core](https://github.com/XTLS/Xray-core) with a few cu
 
 - Extended BitTorrent sniffer
 - Improved HTTP sniffing
+- Stable outbound selection by account email with the `userHash` balancer strategy
 - Switched .dat files from `Loyalsoldier/v2ray-rules-dat` to `MetaCubeX/meta-rules-dat`
 - REALITY min client version check removed
 - Added a workflow to build Linux binaries for releases
@@ -21,6 +22,31 @@ Users are told apart by email (client IP for inbounds without one). Accounts car
 
 - the bridge account, email `bridge_user`;
 - keys online from more than 8 IPs count as shared and are exempt from `bittorrent-mse`; this needs `"statsUserOnline": true` in the policy.
+
+### User-hashed outbound selection
+
+`userHash` maps each authenticated account's raw, case-sensitive `email` to an outbound in a sorted tag pool. Give each account a unique, nonempty email. Different emails can share an exit; duplicate emails share the same assignment. Selection stays stable across connections and restarts with the same email and pool. Adding, removing, or renaming pool tags can redistribute users.
+
+Merge this routing fragment into your configuration, placing its TCP/UDP rule after existing rules that must take priority:
+
+```json
+{
+  "routing": {
+    "balancers": [
+      {
+        "tag": "client-exits",
+        "selector": ["exit-"],
+        "strategy": { "type": "userHash" }
+      }
+    ],
+    "rules": [
+      { "network": "tcp,udp", "balancerTag": "client-exits" }
+    ]
+  }
+}
+```
+
+Each selected outbound must already have a stable public egress IP. There is no health-based failover: an unavailable chosen exit stays selected. Missing email or an empty pool uses the configured `fallbackTag`, or the default outbound when none is configured. Explicit balancer overrides take precedence.
 
 ## Usage with [Remnanode](https://github.com/remnawave/node)
 

@@ -67,7 +67,7 @@ func (s *LeastLoadStrategy) InjectContext(ctx context.Context) {
 	}))
 }
 
-func (s *LeastLoadStrategy) PickOutbound(candidates []string) string {
+func (s *LeastLoadStrategy) PickOutbound(candidates []string, _ string) string {
 	selects := s.pickOutbounds(candidates)
 	count := len(selects)
 	if count == 0 {

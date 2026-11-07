@@ -14,6 +14,7 @@ import (
 	"github.com/xtls/xray-core/common"
 	"github.com/xtls/xray-core/common/geodata"
 	"github.com/xtls/xray-core/common/net"
+	"github.com/xtls/xray-core/features/outbound"
 	"github.com/xtls/xray-core/features/routing"
 	"github.com/xtls/xray-core/testing/mocks"
 	"google.golang.org/grpc"
@@ -285,6 +286,8 @@ func TestServiceTestRoute(t *testing.T) {
 	r := new(router.Router)
 	mockCtl := gomock.NewController(t)
 	defer mockCtl.Finish()
+	mockSelector := mocks.NewOutboundHandlerSelector(mockCtl)
+	mockSelector.EXPECT().Select([]string{"exit-"}).Return([]string{"exit-a", "exit-b", "exit-c"}).AnyTimes()
 	common.Must(r.Init(context.TODO(), &router.Config{
 		Rule: []*router.RoutingRule{
 			{
@@ -316,11 +319,23 @@ func TestServiceTestRoute(t *testing.T) {
 				TargetTag: &router.RoutingRule_Tag{Tag: "out"},
 			},
 			{
+				UserEmail: []string{"alice", "bob"},
+				TargetTag: &router.RoutingRule_BalancingTag{BalancingTag: "client-exits"},
+			},
+			{
 				Networks:  []net.Network{net.Network_UDP, net.Network_TCP},
 				TargetTag: &router.RoutingRule_Tag{Tag: "out"},
 			},
 		},
-	}, mocks.NewDNSClient(mockCtl), mocks.NewOutboundManager(mockCtl), nil))
+		BalancingRule: []*router.BalancingRule{{
+			Tag:              "client-exits",
+			Strategy:         "userHash",
+			OutboundSelector: []string{"exit-"},
+		}},
+	}, mocks.NewDNSClient(mockCtl), struct {
+		outbound.Manager
+		outbound.HandlerSelector
+	}{mocks.NewOutboundManager(mockCtl), mockSelector}, nil))
 
 	lis := bufconn.Listen(1024 * 1024)
 	bufDialer := func(context.Context, string) (net.Conn, error) {
@@ -354,6 +369,10 @@ func TestServiceTestRoute(t *testing.T) {
 			{Network: net.Network_UDP, Protocol: "bittorrent", OutboundTag: "blocked"},
 			{User: "example@example.com", OutboundTag: "out"},
 			{SourceIPs: [][]byte{{127, 0, 0, 1}}, Attributes: map[string]string{"attr": "value"}, OutboundTag: "out"},
+			{User: "alice", Network: net.Network_TCP, SourceIPs: [][]byte{{192, 0, 2, 1}}, OutboundTag: "exit-c"},
+			{User: "alice", Network: net.Network_UDP, SourceIPs: [][]byte{{198, 51, 100, 2}}, OutboundTag: "exit-c"},
+			{User: "bob", Network: net.Network_TCP, OutboundTag: "exit-a"},
+			{User: "bob", Network: net.Network_UDP, OutboundTag: "exit-a"},
 		}
 
 		// Test simple TestRoute

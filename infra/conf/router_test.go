@@ -236,3 +236,37 @@ func TestRouterConfig(t *testing.T) {
 		},
 	})
 }
+
+func TestUserHashBalancerConfig(t *testing.T) {
+	expected := &router.BalancingRule{
+		Tag:              "client-exits",
+		OutboundSelector: []string{"exit-"},
+		Strategy:         "userhash",
+		FallbackTag:      "direct",
+	}
+
+	for _, test := range []struct {
+		name     string
+		strategy string
+	}{
+		{name: "default settings", strategy: `{"type":"userHash"}`},
+		{name: "empty settings", strategy: `{"type":"userHash","settings":{}}`},
+		{name: "mixed case", strategy: `{"type":"UsErHaSh"}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var config BalancingRule
+			input := `{"tag":"client-exits","selector":["exit-"],"strategy":` + test.strategy + `,"fallbackTag":"direct"}`
+			if err := json.Unmarshal([]byte(input), &config); err != nil {
+				t.Fatal(err)
+			}
+
+			actual, err := config.Build()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !proto.Equal(actual, expected) {
+				t.Errorf("unexpected balancer config: got %v, want %v", actual, expected)
+			}
+		})
+	}
+}

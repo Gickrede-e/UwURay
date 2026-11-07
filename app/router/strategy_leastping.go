@@ -16,7 +16,7 @@ type LeastPingStrategy struct {
 }
 
 func (l *LeastPingStrategy) GetPrincipleTarget(strings []string) []string {
-	return []string{l.PickOutbound(strings)}
+	return []string{l.PickOutbound(strings, "")}
 }
 
 func (l *LeastPingStrategy) InjectContext(ctx context.Context) {
@@ -27,7 +27,7 @@ func (l *LeastPingStrategy) InjectContext(ctx context.Context) {
 	}))
 }
 
-func (l *LeastPingStrategy) PickOutbound(strings []string) string {
+func (l *LeastPingStrategy) PickOutbound(strings []string, _ string) string {
 	if l.observatory == nil {
 		errors.LogError(l.ctx, "observer is nil")
 		return ""

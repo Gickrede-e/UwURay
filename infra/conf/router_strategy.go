@@ -15,6 +15,7 @@ const (
 	strategyLeastPing  string = "leastping"
 	strategyRoundRobin string = "roundrobin"
 	strategyLeastLoad  string = "leastload"
+	strategyUserHash   string = "userhash"
 )
 
 var strategyConfigLoader = NewJSONConfigLoader(ConfigCreatorCache{
@@ -22,6 +23,7 @@ var strategyConfigLoader = NewJSONConfigLoader(ConfigCreatorCache{
 	strategyLeastPing:  func() interface{} { return new(strategyEmptyConfig) },
 	strategyRoundRobin: func() interface{} { return new(strategyEmptyConfig) },
 	strategyLeastLoad:  func() interface{} { return new(strategyLeastLoadConfig) },
+	strategyUserHash:   func() interface{} { return new(strategyEmptyConfig) },
 }, "type", "settings")
 
 type strategyEmptyConfig struct{}

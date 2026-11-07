@@ -13,7 +13,7 @@ import (
 )
 
 type BalancingStrategy interface {
-	PickOutbound([]string) string
+	PickOutbound([]string, string) string
 }
 
 type BalancingPrincipleTarget interface {
@@ -43,7 +43,7 @@ func (s *RoundRobinStrategy) GetPrincipleTarget(strings []string) []string {
 	return strings
 }
 
-func (s *RoundRobinStrategy) PickOutbound(tags []string) string {
+func (s *RoundRobinStrategy) PickOutbound(tags []string, _ string) string {
 	if s.observatory != nil {
 		observeReport, err := s.observatory.GetObservation(s.ctx)
 		if err == nil {
@@ -92,7 +92,7 @@ type Balancer struct {
 }
 
 // PickOutbound picks the tag of a outbound
-func (b *Balancer) PickOutbound() (string, error) {
+func (b *Balancer) PickOutbound(user string) (string, error) {
 	candidates, err := b.SelectOutbounds()
 	if err != nil {
 		if b.fallbackTag != "" {
@@ -105,7 +105,7 @@ func (b *Balancer) PickOutbound() (string, error) {
 	if o := b.override.Get(); o != "" {
 		tag = o
 	} else {
-		tag = b.strategy.PickOutbound(candidates)
+		tag = b.strategy.PickOutbound(candidates, user)
 	}
 	if tag == "" {
 		if b.fallbackTag != "" {
