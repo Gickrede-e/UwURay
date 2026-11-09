@@ -245,7 +245,7 @@ func (c *serverConn) handshake() error {
 		if err = validateLoginAcknowledgedPacket(pkt); err != nil {
 			return err
 		}
-		if err = runPaddingSchedule(c.reader, c.writer, false, loginAcknowledgedLength, c.paddingSchedule); err != nil {
+		if err = runServerPaddingScheduleFast(c.reader, c.writer, loginAcknowledgedLength, c.paddingSchedule); err != nil {
 			return fmt.Errorf("run startup padding: %w", err)
 		}
 

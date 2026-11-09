@@ -132,6 +132,59 @@ func writePaddingTurn(w io.Writer, turn paddingTurn, prefixLength int) error {
 	return writePaddingTurnWithSleep(w, turn, prefixLength, time.Sleep)
 }
 
+// runServerPaddingScheduleFast keeps the wire format stock clients validate (turn order and
+// lengths) but drops the server's share of the latency: server turns are written concurrently
+// with reading client turns instead of waiting for each one, without sleeps, at the smallest
+// length the client accepts. The handshake deadline bounds both goroutines if the peer stalls.
+func runServerPaddingScheduleFast(reader io.Reader, writer io.Writer, firstTurnPrefixLength int, schedule []paddingTurn) error {
+	if err := validatePaddingSchedule(schedule, firstTurnPrefixLength); err != nil {
+		return err
+	}
+
+	writeDone := make(chan error, 1)
+	go func() {
+		writeDone <- writeServerPaddingTurnsFast(writer, schedule)
+	}()
+
+	var readErr error
+	for i, turn := range schedule {
+		if turn.direction != paddingClientToServer {
+			continue
+		}
+		prefixLength := 0
+		if i == 0 {
+			prefixLength = firstTurnPrefixLength
+		}
+		if err := readPaddingTurn(reader, turn, prefixLength); err != nil {
+			readErr = fmt.Errorf("read padding turn %d: %w", i, err)
+			break
+		}
+	}
+	writeErr := <-writeDone
+	if readErr != nil {
+		return readErr
+	}
+	return writeErr
+}
+
+func writeServerPaddingTurnsFast(writer io.Writer, schedule []paddingTurn) error {
+	noSleep := func(time.Duration) {}
+	var writeBuffer []byte
+	for i, turn := range schedule {
+		if turn.direction != paddingServerToClient {
+			continue
+		}
+		if len(turn.variants) == 0 {
+			turn.sendMinLength = turn.minLength
+			turn.sendMaxLength = turn.minLength
+		}
+		if err := writePaddingTurnWithBuffer(writer, turn, 0, noSleep, &writeBuffer); err != nil {
+			return fmt.Errorf("write padding turn %d: %w", i, err)
+		}
+	}
+	return nil
+}
+
 func writePaddingTurnWithSleep(w io.Writer, turn paddingTurn, prefixLength int, sleep func(time.Duration)) error {
 	return writePaddingTurnWithBuffer(w, turn, prefixLength, sleep, nil)
 }
