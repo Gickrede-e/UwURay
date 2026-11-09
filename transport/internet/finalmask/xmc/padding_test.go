@@ -138,6 +138,39 @@ func TestPaddingScheduleSynchronizesDirections(t *testing.T) {
 	}
 }
 
+func TestFastServerPaddingIsAcceptedByStockClient(t *testing.T) {
+	client, server := net.Pipe()
+	defer client.Close()
+	defer server.Close()
+	clientSchedule, err := newClientPaddingSchedule2612()
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverSchedule, err := newServerPaddingSchedule2612()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const loginAcknowledgedLength = 2
+
+	serverDone := make(chan error, 1)
+	go func() {
+		serverDone <- runServerPaddingScheduleFast(server, server, loginAcknowledgedLength, serverSchedule)
+	}()
+	clientErr := runPaddingSchedule(client, client, true, loginAcknowledgedLength, clientSchedule)
+
+	if clientErr != nil {
+		t.Fatal(clientErr)
+	}
+	select {
+	case err := <-serverDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("fast server padding schedule did not complete")
+	}
+}
+
 func TestReadPaddingTurnHandlesFragmentedInput(t *testing.T) {
 	turn := paddingTurn{direction: paddingClientToServer, minLength: 1024, maxLength: 1024}
 	var encoded bytes.Buffer
