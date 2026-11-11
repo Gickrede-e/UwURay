@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"io"
 	"net"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestPacketStreamUsesPlainFraming(t *testing.T) {
@@ -98,5 +100,139 @@ func TestPacketStreamRoundTrip(t *testing.T) {
 	}
 	if err = <-serverDone; err != nil {
 		t.Fatalf("server: %v", err)
+	}
+}
+
+// Mux uploads and downloads on one connection while the server echoes, so a client
+// keep-alive reply that waits behind a blocked upload would stall both directions.
+func TestPacketStreamKeepAliveDoesNotDeadlockFullDuplex(t *testing.T) {
+	previousPeriod := keepAlivePeriod
+	keepAlivePeriod = 5 * time.Millisecond
+	defer func() { keepAlivePeriod = previousPeriod }()
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+	client := newPacketStream(clientConn, clientConn, true)
+	server := newPacketStream(serverConn, serverConn, false)
+	defer server.Stop()
+	const totalLength = 4 * 1024 * 1024
+	go func() {
+		buffer := make([]byte, 32*1024)
+		for {
+			n, err := server.Read(buffer)
+			if err != nil {
+				return
+			}
+			if _, err = server.Write(buffer[:n]); err != nil {
+				return
+			}
+		}
+	}()
+	go func() {
+		chunk := bytes.Repeat([]byte{0x5a}, 32*1024)
+		for written := 0; written < totalLength; written += len(chunk) {
+			if _, err := client.Write(chunk); err != nil {
+				return
+			}
+		}
+	}()
+
+	readDone := make(chan error, 1)
+	go func() {
+		_, err := io.CopyN(io.Discard, client, totalLength)
+		readDone <- err
+	}()
+
+	select {
+	case err := <-readDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("full-duplex stream deadlocked")
+	}
+}
+
+// Stock clients (before the async reply fix) answer keep-alives from their read loop under
+// the write lock. The server must not ping mid-transfer, or a mux connection deadlocks.
+func TestServerKeepAliveDoesNotDeadlockStockClient(t *testing.T) {
+	previousPeriod := keepAlivePeriod
+	keepAlivePeriod = 5 * time.Millisecond
+	defer func() { keepAlivePeriod = previousPeriod }()
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+	server := newPacketStream(serverConn, serverConn, false)
+	defer server.Stop()
+	var clientWriteMu sync.Mutex
+	const totalLength = 4 * 1024 * 1024
+	go func() {
+		buffer := make([]byte, 32*1024)
+		for {
+			n, err := server.Read(buffer)
+			if err != nil {
+				return
+			}
+			if _, err = server.Write(buffer[:n]); err != nil {
+				return
+			}
+		}
+	}()
+	go func() {
+		chunk := bytes.Repeat([]byte{0x5a}, 24*1024)
+		for written := 0; written < totalLength; written += len(chunk) {
+			channel := String(packetChannel)
+			payload := RestBytes(chunk)
+			clientWriteMu.Lock()
+			err := writePacket(clientConn, configurationServerboundCustomPayload, &channel, &payload)
+			clientWriteMu.Unlock()
+			if err != nil {
+				return
+			}
+		}
+	}()
+
+	readDone := make(chan error, 1)
+	go func() {
+		received := 0
+		for received < totalLength {
+			packet, err := readPacket(clientConn)
+			if err != nil {
+				readDone <- err
+				return
+			}
+			switch packet.packetID {
+			case configurationClientboundCustomPayload:
+				payload, _, err := parseCustomPayload(packet)
+				if err != nil {
+					readDone <- err
+					return
+				}
+				received += len(payload)
+			case configurationKeepAlive:
+				var id Long
+				if err = packet.readFields(&id); err != nil {
+					readDone <- err
+					return
+				}
+				clientWriteMu.Lock()
+				err = writePacket(clientConn, configurationKeepAlive, &id)
+				clientWriteMu.Unlock()
+				if err != nil {
+					readDone <- err
+					return
+				}
+			}
+		}
+		readDone <- nil
+	}()
+
+	select {
+	case err := <-readDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("stock client deadlocked against server keep-alives")
 	}
 }

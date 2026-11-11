@@ -14,10 +14,12 @@ const (
 	configurationServerboundCustomPayload = 0x02
 	configurationKeepAlive                = 0x04
 
-	packetChannel   = "xmc:data"
-	maxPacketData   = 24 * 1024
-	keepAlivePeriod = 15 * time.Second
+	packetChannel = "xmc:data"
+	maxPacketData = 24 * 1024
 )
+
+// keepAlivePeriod is a var so tests can shorten it.
+var keepAlivePeriod = 15 * time.Second
 
 // packetStream carries the raw proxy byte stream in Minecraft configuration
 // custom payload packets. The configuration state provides bidirectional
@@ -31,9 +33,11 @@ type packetStream struct {
 	writeMu sync.Mutex
 	pending []byte
 
-	keepAliveID atomic.Int64
-	done        chan struct{}
-	stopOnce    sync.Once
+	keepAliveID      atomic.Int64
+	keepAliveReplies chan Long
+	lastDataWriteNs  atomic.Int64
+	done             chan struct{}
+	stopOnce         sync.Once
 }
 
 func newPacketStream(reader io.Reader, writer io.Writer, isClient bool) *packetStream {
@@ -43,8 +47,11 @@ func newPacketStream(reader io.Reader, writer io.Writer, isClient bool) *packetS
 		isClient: isClient,
 		done:     make(chan struct{}),
 	}
-	if !isClient {
-		go s.keepAliveLoop()
+	if isClient {
+		s.keepAliveReplies = make(chan Long, 1)
+		go s.keepAliveReplyLoop()
+	} else {
+		go s.keepAliveLoop(keepAlivePeriod)
 	}
 	return s
 }
@@ -91,8 +98,11 @@ func (s *packetStream) Read(p []byte) (int, error) {
 				return 0, fmt.Errorf("read minecraft keep-alive: %w", err)
 			}
 			if s.isClient {
-				if err := s.writeKeepAlive(id); err != nil {
-					return 0, err
+				// Never block Read on the write lock: with mux, a stalled upload holding it
+				// would stop downloads and deadlock both directions. One queued reply is enough.
+				select {
+				case s.keepAliveReplies <- id:
+				default:
 				}
 			}
 		}
@@ -120,6 +130,7 @@ func (s *packetStream) Write(p []byte) (int, error) {
 		}
 		written = end
 	}
+	s.lastDataWriteNs.Store(time.Now().UnixNano())
 
 	return written, nil
 }
@@ -167,12 +178,30 @@ func (s *packetStream) writeKeepAlive(id Long) error {
 	return nil
 }
 
-func (s *packetStream) keepAliveLoop() {
-	ticker := time.NewTicker(keepAlivePeriod)
+func (s *packetStream) keepAliveReplyLoop() {
+	for {
+		select {
+		case id := <-s.keepAliveReplies:
+			if err := s.writeKeepAlive(id); err != nil {
+				return
+			}
+		case <-s.done:
+			return
+		}
+	}
+}
+
+func (s *packetStream) keepAliveLoop(period time.Duration) {
+	ticker := time.NewTicker(period)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
+			// Stock clients answer keep-alives from Read under the write lock, which deadlocks
+			// when they upload while we download (mux). Only ping when we have not sent data lately.
+			if time.Since(time.Unix(0, s.lastDataWriteNs.Load())) < period {
+				continue
+			}
 			id := Long(s.keepAliveID.Add(1))
 			if err := s.writeKeepAlive(id); err != nil {
 				return
