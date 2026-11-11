@@ -8,7 +8,11 @@ import (
 )
 
 func (c *Config) WrapConnClient(conn net.Conn, dest *net.Destination, dialer *finalmask.Dialer) (net.Conn, error) {
-	cc, err := newClientConn(conn, c.Usernames, c.Password, c.RsaPublicKey, c.Hostname)
+	profiles, err := profilesFromConfig(c.Profiles)
+	if err != nil {
+		return nil, fmt.Errorf("minecraft finalmask: %w", err)
+	}
+	cc, err := newClientConn(conn, profiles, c.Password, c.RsaPublicKey, c.Hostname)
 	if err != nil {
 		return nil, fmt.Errorf("minecraft finalmask: %w", err)
 	}
@@ -17,7 +21,11 @@ func (c *Config) WrapConnClient(conn net.Conn, dest *net.Destination, dialer *fi
 }
 
 func (c *Config) WrapConnServer(conn net.Conn) (net.Conn, error) {
-	cc, err := wrapConnServer(conn, c.Password, c.RsaPrivateKey, c.RsaPublicKey)
+	profiles, err := profilesFromConfig(c.Profiles)
+	if err != nil {
+		return nil, fmt.Errorf("minecraft finalmask: %w", err)
+	}
+	cc, err := wrapConnServer(conn, profiles, c.Password, c.RsaPrivateKey, c.RsaPublicKey)
 	if err != nil {
 		return nil, fmt.Errorf("minecraft finalmask: %w", err)
 	}
