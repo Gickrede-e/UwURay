@@ -13,7 +13,6 @@ import (
 	"regexp"
 	"strings"
 
-	googleuuid "github.com/google/uuid"
 	"github.com/xtls/xray-core/common/errors"
 	"github.com/xtls/xray-core/common/geodata"
 	xlua "github.com/xtls/xray-core/common/lua"
@@ -932,46 +931,14 @@ func (c *XDNS) Build() (proto.Message, error) {
 }
 
 type XMC struct {
-	Hostname string       `json:"hostname"`
-	Profiles []XMCProfile `json:"profiles"`
-	Password string       `json:"password"`
-}
-
-type XMCProfile struct {
-	// Resolve the UUID by username, then request the session profile with
-	// unsigned=false. Client and server must use the same signed profile.
-	Username          string `json:"username"`
-	UUID              string `json:"uuid"`
-	TexturesValue     string `json:"texturesValue"`
-	TexturesSignature string `json:"texturesSignature"`
-}
-
-var xmcUsernamePattern = regexp.MustCompile(`^[A-Za-z0-9_]{3,16}$`)
-
-func (c *XMCProfile) Build() (*xmc.Profile, error) {
-	if !xmcUsernamePattern.MatchString(c.Username) {
-		return nil, fmt.Errorf("invalid minecraft profile username: %q", c.Username)
-	}
-
-	profileUUID, err := googleuuid.Parse(c.UUID)
-	if err != nil {
-		return nil, fmt.Errorf("invalid minecraft profile UUID: %w", err)
-	}
-	if c.TexturesValue == "" || c.TexturesSignature == "" {
-		return nil, fmt.Errorf("incomplete minecraft profile textures")
-	}
-
-	return &xmc.Profile{
-		Username:          c.Username,
-		Uuid:              append([]byte(nil), profileUUID[:]...),
-		TexturesValue:     c.TexturesValue,
-		TexturesSignature: c.TexturesSignature,
-	}, nil
+	Hostname  string   `json:"hostname"`
+	Usernames []string `json:"usernames"`
+	Password  string   `json:"password"`
 }
 
 func (c *XMC) Build() (proto.Message, error) {
-	if len(c.Profiles) == 0 {
-		return nil, fmt.Errorf("minecraft profiles are required")
+	if len(c.Usernames) == 0 {
+		c.Usernames = []string{"Dream"}
 	}
 
 	if c.Password == "" {
@@ -988,21 +955,12 @@ func (c *XMC) Build() (proto.Message, error) {
 		return nil, fmt.Errorf("marshal minecraft rsa public key: %w", err)
 	}
 
-	profiles := make([]*xmc.Profile, 0, len(c.Profiles))
-	for i := range c.Profiles {
-		profile, err := c.Profiles[i].Build()
-		if err != nil {
-			return nil, fmt.Errorf("build minecraft profile %d: %w", i, err)
-		}
-		profiles = append(profiles, profile)
-	}
-
 	return &xmc.Config{
 		Password:      c.Password,
+		Usernames:     c.Usernames,
 		Hostname:      c.Hostname,
 		RsaPrivateKey: x509.MarshalPKCS1PrivateKey(rsaPrivateKey),
 		RsaPublicKey:  rsaPublicKey,
-		Profiles:      profiles,
 	}, nil
 }
 
